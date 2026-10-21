@@ -43,6 +43,11 @@ export function serveApp(opts: { port: number; dir: string }): AppServer {
         // No real media server here: the offer is logged, then refused.
         return new Response("mock ingest", { status: 503, headers: cors });
       }
+      if (url.pathname === "/__frame") {
+        // A neutral page (no CSP of ours) that embeds the studio, for the framing test.
+        const html = `<!doctype html><title>host</title><iframe id="f" sandbox="allow-scripts allow-same-origin" src="/?nosw&framed"></iframe>`;
+        return new Response(html, { headers: { "content-type": "text/html" } });
+      }
       let path = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, "");
       if (path.endsWith("/")) path += "index.html";
       const file = Bun.file(join(opts.dir, path));

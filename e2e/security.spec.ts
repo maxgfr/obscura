@@ -51,17 +51,18 @@ test("the studio page cannot send anything anywhere", async ({ browser }) => {
 test("framed, the studio blanks itself", async ({ browser }) => {
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
-  await page.goto("/?nosw");
-  await page.evaluate(() => {
-    document.body.replaceChildren();
-    const f = document.createElement("iframe");
-    f.src = "./?nosw";
-    f.id = "f";
-    document.body.append(f);
-  });
-  // The frame either navigates the top window away or stays empty: no studio inside a frame.
-  await page.waitForTimeout(1500);
-  const inner = page.frameLocator("#f").locator("[data-testid=stage]");
-  await expect(inner).toHaveCount(0);
+  // A host page embeds the studio in a frame that may run scripts but not navigate the top window.
+  await page.goto("/__frame");
+  await page.waitForLoadState("load");
+  const frame = page.frames().find((f) => f.url().includes("framed"));
+  expect(frame).toBeTruthy();
+  await page.waitForTimeout(500);
+  const inside = await frame?.evaluate(() => ({
+    scripts: performance.getEntriesByType("resource").some((e) => e.name.endsWith(".js")),
+    elements: document.documentElement.childElementCount,
+    stage: !!document.querySelector("[data-testid=stage]"),
+  }));
+  // The app's script loaded and ran, and refused to draw anything.
+  expect(inside).toEqual({ scripts: true, elements: 0, stage: false });
   await ctx.close();
 });
