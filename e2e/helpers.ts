@@ -34,6 +34,9 @@ export async function studio(
   });
   await page.goto(path);
   await page.getByTestId("stage").waitFor();
+  // 720p: lighter for GPU-less CI runners (software WebGL and encoding).
+  const size = page.getByTestId("canvas-size");
+  if (await size.isVisible()) await size.selectOption("1280x720");
   return { ctx, page, errors };
 }
 

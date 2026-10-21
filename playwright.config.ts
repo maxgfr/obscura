@@ -11,10 +11,11 @@ const media = [
 
 export default defineConfig({
   testDir: "e2e",
-  timeout: 90_000,
+  // CI runners have no GPU: WebGL and H.264 run in software, several times slower than a laptop.
+  timeout: process.env.CI ? 180_000 : 90_000,
   expect: { timeout: 20_000 },
   fullyParallel: true,
-  workers: process.env.CI ? 2 : 3,
+  workers: process.env.CI ? 1 : 3,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["github"], ["list"]] : "list",
   use: {

@@ -48,7 +48,7 @@ test("records the program to fragmented MP4, written to disk as it goes", async 
     });
     return { w: v.videoWidth, h: v.videoHeight };
   }, f.name);
-  expect(meta).toEqual({ w: 1920, h: 1080 });
+  expect(meta).toEqual({ w: 1280, h: 720 });
 
   // About the time recorded, pause excluded, with both tracks (read by the CLI).
   const CLI = "cli/target/debug/obscura";
