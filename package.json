@@ -1,0 +1,32 @@
+{
+  "name": "obscura",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A light, private recording studio in the browser: scenes, sources, overlays and an audio mixer. No server, no upload.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "bun scripts/dev.ts",
+    "build": "bun scripts/build.ts",
+    "typecheck": "tsc --noEmit -p .",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "bun test src scripts",
+    "test:e2e": "bun run build && playwright test",
+    "check-size": "bun scripts/check-size.ts",
+    "vectors": "bun scripts/vectors.ts"
+  },
+  "dependencies": {
+    "@noble/hashes": "2.4.0",
+    "@preact/signals": "2.11.2",
+    "@sapphi-red/web-noise-suppressor": "0.4.1",
+    "mediabunny": "1.62.0",
+    "preact": "10.29.8"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@playwright/test": "1.63.0",
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
+  }
+}

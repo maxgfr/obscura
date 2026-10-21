@@ -1,0 +1,82 @@
+/* Design tokens. A studio is dark by default; light follows the system. */
+:root {
+  color-scheme: dark light;
+
+  --bg: oklch(0.17 0.012 290);
+  --surface: oklch(0.205 0.013 290);
+  --surface-2: oklch(0.235 0.014 290);
+  --surface-3: oklch(0.275 0.015 290);
+  --text: oklch(0.95 0.006 290);
+  --muted: oklch(0.72 0.012 290);
+  --faint: oklch(0.56 0.012 290);
+  --line: oklch(1 0 0 / 0.07);
+  --line-strong: oklch(1 0 0 / 0.14);
+
+  --accent: oklch(0.74 0.12 285);
+  --accent-hover: oklch(0.79 0.11 285);
+  --accent-soft: oklch(0.74 0.12 285 / 0.16);
+  --on-accent: oklch(0.2 0.04 285);
+  --rec: oklch(0.65 0.2 28);
+  --rec-hover: oklch(0.7 0.19 28);
+  --rec-soft: oklch(0.65 0.2 28 / 0.16);
+  --ok: oklch(0.76 0.14 155);
+  --ok-soft: oklch(0.76 0.14 155 / 0.14);
+  --warn: oklch(0.82 0.13 80);
+  --warn-soft: oklch(0.82 0.13 80 / 0.14);
+  --danger: oklch(0.7 0.17 25);
+
+  --stage: oklch(0.12 0.01 290);
+  --handle: oklch(0.74 0.12 285);
+  --logo-bg: oklch(0.17 0.012 290);
+  --logo-fg: oklch(0.95 0.006 290);
+
+  --shadow-md: 0 0 0 1px oklch(1 0 0 / 0.07), 0 6px 18px oklch(0 0 0 / 0.35);
+  --shadow-lg: 0 0 0 1px oklch(1 0 0 / 0.09), 0 16px 40px oklch(0 0 0 / 0.5);
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  --font:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --fast: 120ms;
+  --med: 200ms;
+
+  --tap: 40px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: oklch(0.965 0.005 290);
+    --surface: oklch(0.995 0.002 290);
+    --surface-2: oklch(0.95 0.006 290);
+    --surface-3: oklch(0.915 0.008 290);
+    --text: oklch(0.22 0.02 290);
+    --muted: oklch(0.47 0.015 290);
+    --faint: oklch(0.62 0.012 290);
+    --line: oklch(0.22 0.02 290 / 0.1);
+    --line-strong: oklch(0.22 0.02 290 / 0.18);
+
+    --accent: oklch(0.52 0.17 285);
+    --accent-hover: oklch(0.47 0.17 285);
+    --accent-soft: oklch(0.52 0.17 285 / 0.12);
+    --on-accent: oklch(0.99 0.005 285);
+    --rec: oklch(0.58 0.21 28);
+    --rec-hover: oklch(0.53 0.21 28);
+    --ok: oklch(0.55 0.13 155);
+    --warn: oklch(0.6 0.13 70);
+    --danger: oklch(0.55 0.19 27);
+
+    --stage: oklch(0.2 0.012 290);
+
+    --shadow-md:
+      0 1px 2px oklch(0.2 0.02 290 / 0.06), 0 4px 14px oklch(0.2 0.02 290 / 0.08),
+      0 0 0 1px oklch(0.2 0.02 290 / 0.06);
+    --shadow-lg: 0 10px 30px oklch(0.2 0.02 290 / 0.16), 0 0 0 1px oklch(0.2 0.02 290 / 0.08);
+  }
+}
