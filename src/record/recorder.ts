@@ -63,6 +63,15 @@ export interface Recording {
   readonly failed: Promise<never>;
 }
 
+/** Step-by-step log of a recording's life, when `localStorage["obscura.debug"]` is set. */
+function debug(...args: unknown[]): void {
+  try {
+    if (globalThis.localStorage?.getItem("obscura.debug")) console.info("[obscura]", ...args);
+  } catch {
+    // Storage blocked: no debug log.
+  }
+}
+
 const VIDEO: Record<Container, VideoCodec[]> = {
   mp4: ["avc", "hevc", "vp9", "av1"],
   webm: ["vp9", "av1", "vp8"],
@@ -76,8 +85,10 @@ export async function startRecording(o: RecordOptions): Promise<Recording> {
       height: o.height,
       frameRate: o.fps,
     });
+    debug("video codec", codec);
     if (codec) return startWebCodecs(o, codec, sealed);
   }
+  debug("falling back to MediaRecorder");
   return startMediaRecorder(o, sealed);
 }
 
@@ -104,6 +115,7 @@ async function startWebCodecs(o: RecordOptions, codec: VideoCodec, sealed: boole
     { numberOfChannels: 2, sampleRate: 48_000 },
   );
   const audio = acodec ? new AudioSampleSource({ codec: acodec, quality }) : null;
+  debug("audio codec", acodec);
   if (audio) output.addAudioTrack(audio);
 
   let fail: (e: unknown) => void = () => {};
@@ -192,9 +204,13 @@ async function startWebCodecs(o: RecordOptions, codec: VideoCodec, sealed: boole
       pausedAt = null;
     },
     async stop() {
+      debug("stop: frames up to", lastFrame, "audio up to", audioEnd, "clock", at(o.clock()));
       await halt();
+      debug("stop: halted");
       await output.finalize();
+      debug("stop: finalized");
       await pipeline.finish();
+      debug("stop: pipeline done", pipeline.written);
       return sink.close(name);
     },
     async cancel() {

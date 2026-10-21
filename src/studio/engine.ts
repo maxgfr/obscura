@@ -161,7 +161,7 @@ export class Engine {
     const cap: Capture = {
       source,
       kind,
-      label: (vt ?? at)?.label || kind,
+      label: captureLabel(kind, vt ?? at),
       stream,
       video,
       hasAudio: !!at,
@@ -303,6 +303,22 @@ export class Engine {
     for (const t of this.program.getTracks()) t.stop();
     this.compositor.dispose();
   }
+}
+
+/** What the indicator shows: the kind of surface for a screen (its track label is an opaque id), else the device name. */
+export function captureLabel(kind: Capture["kind"], track: MediaStreamTrack | undefined): string {
+  if (kind === "display") {
+    const surface = (track?.getSettings() as { displaySurface?: string } | undefined)
+      ?.displaySurface;
+    return surface === "window"
+      ? "Window"
+      : surface === "browser"
+        ? "Tab"
+        : surface === "monitor"
+          ? "Entire screen"
+          : "Screen";
+  }
+  return track?.label || (kind === "camera" ? "Camera" : "Microphone");
 }
 
 export function capturable(kind: LayerKind): kind is Capture["kind"] {

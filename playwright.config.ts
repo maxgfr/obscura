@@ -5,6 +5,8 @@ const media = [
   "--use-fake-device-for-media-stream",
   "--use-fake-ui-for-media-stream",
   "--autoplay-policy=no-user-gesture-required",
+  // OBSCURA_SOFTWARE_GL=1 renders like a GPU-less CI runner.
+  ...(process.env.OBSCURA_SOFTWARE_GL ? ["--use-angle=swiftshader", "--disable-gpu"] : []),
 ];
 
 export default defineConfig({
