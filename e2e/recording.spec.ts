@@ -8,7 +8,7 @@ import { openCaptures, recordFor, recordingBytes, storedRecordings, studio, text
 test("records the program to fragmented MP4, written to disk as it goes", async ({ browser }) => {
   const { page, errors, ctx } = await studio(browser);
   await openCaptures(page);
-  await page.getByTestId("mic-on").click();
+  // The microphone is on by default.
   await expect(page.getByTestId("captures").getByRole("listitem")).toHaveCount(3);
 
   const started = Date.now();
@@ -64,11 +64,14 @@ test("records the program to fragmented MP4, written to disk as it goes", async 
   }
 
   // Releasing a capture from the indicator stops it.
-  await page
-    .getByRole("button", { name: /Stop capturing/ })
-    .first()
-    .click();
+  await page.getByRole("button", { name: /Stop capturing .*(audio|microphone)/i }).click();
   await expect(page.getByTestId("captures").getByRole("listitem")).toHaveCount(2);
+  // A microphone the user stopped stays off until turned back on.
+  await page.keyboard.press("2");
+  await page.keyboard.press("1");
+  await expect(page.getByTestId("captures").getByRole("listitem")).toHaveCount(2);
+  await page.getByTestId("mic-on").click();
+  await expect(page.getByTestId("captures").getByRole("listitem")).toHaveCount(3);
   expect(errors).toEqual([]);
   await ctx.close();
 });

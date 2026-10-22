@@ -43,6 +43,8 @@ export class Engine {
   readonly program: MediaStream;
   private live = new Map<string, Capture>();
   private opening = new Map<string, Promise<void>>();
+  /** Microphones the user stopped: not turned back on by themselves. */
+  private held = new Set<string>();
   private images = new Map<string, Picture>();
   private loadingImages = new Set<string>();
   private texts = new Map<string, { canvas: HTMLCanvasElement; key: string; version: number }>();
@@ -86,7 +88,15 @@ export class Engine {
         this.syncAudio();
       }),
       monitors.subscribe(() => this.syncAudio()),
+      // Microphones are on by default: the browser asks once, then remembers.
+      activeScene.subscribe(() => this.openMics()),
     );
+    // Audio can only start after a gesture; any click or key will do.
+    const wake = () => void this.mixer.resume();
+    for (const type of ["pointerdown", "keydown"] as const) {
+      window.addEventListener(type, wake, { capture: true, passive: true });
+      this.disposers.push(() => window.removeEventListener(type, wake, { capture: true }));
+    }
   }
 
   get videoTrack(): MediaStreamTrack {
@@ -109,6 +119,7 @@ export class Engine {
     const pending = this.opening.get(source);
     if (pending) return pending;
     const kind = layer.kind;
+    this.held.delete(source);
     const task = (async () => {
       void this.mixer.resume();
       const fps = doc.value.canvas.fps;
@@ -184,6 +195,23 @@ export class Engine {
     this.mixer.remove(source);
     this.live.delete(source);
     captures.value = [...this.live.values()];
+  }
+
+  /** Stops a capture at the user's request (a microphone then stays off). */
+  stop(source: string): void {
+    this.held.add(source);
+    this.release(source);
+  }
+
+  /** Opens the active scene's microphones, unless stopped by the user or refused. */
+  private openMics(): void {
+    for (const l of activeScene.value.layers) {
+      const s = l.source;
+      if (l.kind !== "mic" || !s || this.live.has(s) || this.opening.has(s) || this.held.has(s))
+        continue;
+      if (captureErrors.value[s]) continue;
+      void this.open(l);
+    }
   }
 
   releaseAll(): void {

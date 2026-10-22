@@ -50,7 +50,7 @@ function CaptureIndicator(): JSX.Element | null {
             class="icon-btn xs"
             aria-label={`Stop capturing ${c.label}`}
             title="Stop this capture"
-            onClick={() => engine?.release(c.source)}
+            onClick={() => engine?.stop(c.source)}
           >
             <Icon name="x" size={12} />
           </button>
