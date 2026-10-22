@@ -188,6 +188,24 @@ export function Stage(props: { canvas: HTMLCanvasElement | null }): JSX.Element 
             </div>
           )}
           {scene.layers.map((l) => {
+            if (l.visible && l.kind === "guest" && l.source && !live.has(l.source)) {
+              const r = l.rect;
+              return (
+                <div
+                  key={l.id}
+                  class="placeholder"
+                  style={{
+                    left: `${r.x * 100}%`,
+                    top: `${r.y * 100}%`,
+                    width: `${r.w * 100}%`,
+                    height: `${r.h * 100}%`,
+                  }}
+                >
+                  <Icon name="users" />
+                  <span class="placeholder-guest">{l.name}: waiting for a guest</span>
+                </div>
+              );
+            }
             if (!l.visible || !capturable(l.kind) || l.kind === "mic" || !l.source) return null;
             if (live.has(l.source)) return null;
             const r = l.rect;

@@ -5,6 +5,8 @@ const media = [
   "--use-fake-device-for-media-stream",
   "--use-fake-ui-for-media-stream",
   "--autoplay-policy=no-user-gesture-required",
+  // Rooms: peers in two browser contexts reach each other by their plain local addresses.
+  "--disable-features=WebRtcHideLocalIpsWithMdns",
   // OBSCURA_SOFTWARE_GL=1 renders like a GPU-less CI runner.
   ...(process.env.OBSCURA_SOFTWARE_GL ? ["--use-angle=swiftshader", "--disable-gpu"] : []),
 ];

@@ -18,7 +18,7 @@ const MAX_NAME: usize = 60;
 const MAX_TEXT: usize = 500;
 const MAX_LINK: usize = 16_000;
 const MAX_JSON: u64 = 256 * 1024;
-const KINDS: [&str; 7] = ["display", "camera", "image", "text", "color", "mask", "mic"];
+const KINDS: [&str; 8] = ["display", "camera", "image", "text", "color", "mask", "mic", "guest"];
 
 pub fn new_id() -> Result<String> {
     let mut b = [0u8; 8];
@@ -203,9 +203,9 @@ fn validate_layer(v: &Value, at: &str, ids: &mut HashSet<String>) -> Result<()> 
     rule("text", kind == "text")?;
     rule("color", kind == "color")?;
     rule("mask", kind == "mask")?;
-    rule("audio", kind == "mic" || kind == "display")?;
+    rule("audio", matches!(kind, "mic" | "display" | "guest"))?;
     rule("image", kind == "image")?;
-    rule("source", matches!(kind, "display" | "camera" | "mic"))?;
+    rule("source", matches!(kind, "display" | "camera" | "mic" | "guest"))?;
     if let Some(t) = o.get("text") {
         let a = format!("{at}.text");
         let t = obj(t, &a)?;
@@ -363,6 +363,22 @@ mod tests {
         assert!(validate(&d).is_err());
         let mut d = default_doc().unwrap();
         d["scenes"][0]["layers"][1]["text"] = json!({});
+        assert!(validate(&d).is_err());
+    }
+
+    #[test]
+    fn accepts_guest_slots() {
+        let mut d = default_doc().unwrap();
+        let mut g = d["scenes"][0]["layers"][2].clone();
+        g["kind"] = json!("guest");
+        g["name"] = json!("Guest 1");
+        g["audio"]["noise"] = json!("off");
+        d["scenes"][0]["layers"].as_array_mut().unwrap().push(g.clone());
+        d["scenes"][0]["layers"][3]["id"] = json!("guestlayer1");
+        validate(&d).unwrap();
+        g.as_object_mut().unwrap().remove("source");
+        g["id"] = json!("guestlayer2");
+        d["scenes"][0]["layers"].as_array_mut().unwrap().push(g);
         assert!(validate(&d).is_err());
     }
 

@@ -59,6 +59,13 @@ const PATHS = {
     "M21 20v-5h-5",
   ],
   scenes: ["M3 4h18v6H3z", "M3 14h18v6H3z"],
+  users: [
+    "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+    "M2 21a7 7 0 0 1 14 0",
+    "M16 3.5a4 4 0 0 1 0 7",
+    "M18 14a6 6 0 0 1 4 7",
+  ],
+  grid: ["M3 3h8v8H3z", "M13 3h8v8h-8z", "M3 13h8v8H3z", "M13 13h8v8h-8z"],
   layers: ["M12 3l9 5-9 5-9-5z", "M3 13l9 5 9-5"],
   sliders: [
     "M4 6h10",
@@ -107,6 +114,7 @@ export const KIND_ICON: Record<string, IconName> = {
   text: "text",
   color: "color",
   mask: "mask",
+  guest: "users",
 };
 
 export function Logo(props: { size?: number }): JSX.Element {

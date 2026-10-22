@@ -42,10 +42,10 @@ describe("build output", () => {
     expect(html.indexOf("Content-Security-Policy")).toBeLessThan(html.indexOf("<script"));
   });
 
-  test("live mode differs only by allowing https: connections", () => {
+  test("live mode differs only by allowing https: and wss: connections", () => {
     const html = read("live.html");
     expect(html).toContain(`content="${LIVE_CSP}"`);
-    expect(LIVE_CSP).toBe(CSP.replace("connect-src 'self'", "connect-src 'self' https:"));
+    expect(LIVE_CSP).toBe(CSP.replace("connect-src 'self'", "connect-src 'self' https: wss:"));
     expect(html).toContain('data-mode="live"');
   });
 

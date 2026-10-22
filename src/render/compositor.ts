@@ -296,7 +296,7 @@ export class Compositor {
             src.width,
             src.height,
             canvas,
-            layer.kind === "camera" ? "cover" : "contain",
+            layer.kind === "camera" || layer.kind === "guest" ? "cover" : "contain",
           );
           rect = f.rect;
           uv = f.uv;

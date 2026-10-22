@@ -447,7 +447,10 @@ function LayerInspector({ layer }: { layer: Layer }): JSX.Element {
               onInput={(radius) => set({ radius })}
             />
           )}
-          {(layer.kind === "camera" || layer.kind === "display" || layer.kind === "image") && (
+          {(layer.kind === "camera" ||
+            layer.kind === "guest" ||
+            layer.kind === "display" ||
+            layer.kind === "image") && (
             <>
               <label class="check">
                 <input

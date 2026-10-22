@@ -6,7 +6,16 @@
  * The CLI mirrors these rules in cli/src/scene.rs.
  */
 
-export const LAYER_KINDS = ["display", "camera", "image", "text", "color", "mask", "mic"] as const;
+export const LAYER_KINDS = [
+  "display",
+  "camera",
+  "image",
+  "text",
+  "color",
+  "mask",
+  "mic",
+  "guest",
+] as const;
 export type LayerKind = (typeof LAYER_KINDS)[number];
 export const FONTS = ["sans", "serif", "mono"] as const;
 export type Font = (typeof FONTS)[number];
@@ -85,8 +94,9 @@ export interface Layer {
   /** Local image asset (OPFS); never part of a link. */
   image?: string;
   /**
-   * Capture slot for screen, camera and microphone layers: layers that share
-   * it (the same camera in two scenes) share one capture. A random id, not a device.
+   * Capture slot for screen, camera, microphone and guest layers: layers that share
+   * it (the same camera in two scenes) share one capture. A random id, not a device
+   * or a person.
    */
   source?: string;
 }
@@ -129,6 +139,7 @@ const NAMES: Record<LayerKind, string> = {
   color: "Color",
   mask: "Privacy mask",
   mic: "Microphone",
+  guest: "Guest",
 };
 
 /** `aspect` is the canvas's width / height, so a camera bubble comes out round. */
@@ -182,6 +193,7 @@ export function newLayer(kind: LayerKind, aspect = 16 / 9, name = NAMES[kind]): 
     case "mic":
       return { ...base, source: newId(), audio: { gain: 1, muted: false, noise: "browser" } };
     case "display":
+    case "guest":
       return { ...base, source: newId(), audio: { gain: 1, muted: false, noise: "off" } };
     case "image":
       return { ...base, rect: { x: 0.35, y: 0.3, w: 0.3, h: 0.4 } };
@@ -225,6 +237,61 @@ function bubble(aspect: number): Rect {
 
 function full(): Rect {
   return { x: 0, y: 0, w: 1, h: 1 };
+}
+
+// ── Split screen ──────────────────────────────────────────────────────────
+
+/**
+ * Lays out the people of a scene (cameras and guests) in tiles. With a screen
+ * in the scene, the screen keeps most of the canvas and the people line up
+ * beside it (below it on a vertical canvas); without one, they share the
+ * canvas in a grid. Other layers are left as they are.
+ */
+export function tile(scene: Scene, aspect: number): Scene {
+  const people = scene.layers.filter(
+    (l) => l.visible && (l.kind === "camera" || l.kind === "guest"),
+  );
+  if (!people.length) return scene;
+  const screen = scene.layers.find((l) => l.visible && l.kind === "display");
+  const wide = aspect >= 1;
+  const rects = new Map<string, Rect>();
+  const n = people.length;
+  if (screen) {
+    const side = wide ? Math.min(0.3, 1 / Math.max(n, 3)) : Math.min(0.35, 1 / Math.max(n, 3));
+    rects.set(
+      screen.id,
+      wide ? { x: 0, y: 0, w: 1 - side, h: 1 } : { x: 0, y: 0, w: 1, h: 1 - side },
+    );
+    people.forEach((l, i) => {
+      rects.set(
+        l.id,
+        wide
+          ? { x: 1 - side, y: i / n, w: side, h: 1 / n }
+          : { x: i / n, y: 1 - side, w: 1 / n, h: side },
+      );
+    });
+  } else {
+    const cols = n === 1 ? 1 : n === 2 ? (wide ? 2 : 1) : n <= 4 ? 2 : 3;
+    const rows = Math.ceil(n / cols);
+    people.forEach((l, i) => {
+      const r = Math.floor(i / cols);
+      // The last row is centered when it is not full.
+      const inRow = r === rows - 1 ? n - r * cols : cols;
+      const c = i - r * cols;
+      const x0 = (cols - inRow) / (2 * cols);
+      rects.set(l.id, { x: x0 + c / cols, y: r / rows, w: 1 / cols, h: 1 / rows });
+    });
+  }
+  return {
+    ...scene,
+    layers: scene.layers.map((l) => {
+      const rect = rects.get(l.id);
+      if (!rect) return l;
+      return l.kind === "display"
+        ? { ...l, rect, crop: { l: 0, t: 0, r: 0, b: 0 } }
+        : { ...l, rect, shape: "rect", radius: 0 };
+    }),
+  };
 }
 
 // ── Validation ────────────────────────────────────────────────────────────
@@ -386,7 +453,7 @@ function validateLayer(v: unknown, at: string): Layer {
       block: int(m.block, 4, 128, `${at}.mask.block`),
     };
   } else forbid("mask");
-  if (kind === "mic" || kind === "display") {
+  if (kind === "mic" || kind === "display" || kind === "guest") {
     need("audio", o.audio !== undefined);
     const a = obj(o.audio, `${at}.audio`);
     only(a, ["gain", "muted", "noise"], `${at}.audio`);
@@ -399,7 +466,7 @@ function validateLayer(v: unknown, at: string): Layer {
   if (kind === "image") {
     if (o.image !== undefined) layer.image = id(o.image, `${at}.image`);
   } else forbid("image");
-  if (kind === "display" || kind === "camera" || kind === "mic") {
+  if (kind === "display" || kind === "camera" || kind === "mic" || kind === "guest") {
     need("source", o.source !== undefined);
     layer.source = id(o.source, `${at}.source`);
   } else forbid("source");

@@ -1007,8 +1007,159 @@ input[type="checkbox"] {
   padding-bottom: 14px;
 }
 
-.live-panel .stack {
+.live-panel .stack,
+.room-panel > .stack {
   padding: 0 14px;
+}
+
+.room-panel {
+  padding-bottom: 14px;
+}
+
+.code-row {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.code-row input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.manual summary {
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.manual[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.manual ol {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.peers {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.peer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 4px 0 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.peer .dot:not(.dot-live) {
+  background: var(--warn);
+}
+
+.peer-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.placeholder-guest {
+  color: oklch(1 0 0 / 0.7);
+  font-size: 13px;
+  text-align: center;
+  text-shadow: 0 1px 2px black;
+}
+
+/* ── join page (a friend's side of a room link) ───────────────────────── */
+.join {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: min(960px, 100%);
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 24px 16px calc(24px + var(--safe-bottom));
+}
+
+.join-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.join-head h1 {
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.join-setup {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.join-setup > .stack:only-child {
+  grid-column: 1 / -1;
+  max-width: 420px;
+}
+
+.join-video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius);
+  background: var(--stage);
+  object-fit: contain;
+}
+
+.join-video.mirror {
+  transform: scaleX(-1);
+  object-fit: cover;
+}
+
+.join-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.join-program {
+  position: relative;
+}
+
+.join-self {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: min(22%, 180px);
+  box-shadow: var(--shadow-md);
+  border-radius: var(--radius);
+}
+
+.join-controls {
+  margin-top: 12px;
+  align-items: center;
+}
+
+@media (max-width: 720px) {
+  .join-setup {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── sheets, toasts, files ────────────────────────────────────────────── */

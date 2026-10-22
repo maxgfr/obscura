@@ -52,6 +52,8 @@ export class Mixer {
   private workletLoaded: Promise<void> | null = null;
   private tapNode: Promise<AudioWorkletNode> | null = null;
   private tapListeners = new Set<(b: AudioBlock) => void>();
+  /** Mix-minus outputs: the program's audio without one source (what a guest hears). */
+  private minus = new Map<string, MediaStreamAudioDestinationNode>();
 
   constructor() {
     this.ctx = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: "interactive" });
@@ -141,6 +143,7 @@ export class Mixer {
     gain.connect(analyser);
     gain.connect(this.bus);
     gain.connect(monitor).connect(ctx.destination);
+    for (const [without, dest] of this.minus) if (without !== source) gain.connect(dest);
     this.channels.set(source, {
       input,
       denoise,
@@ -180,6 +183,34 @@ export class Mixer {
     c.gain.disconnect();
     c.monitor.disconnect();
     this.channels.delete(source);
+  }
+
+  /** The program's audio without `source`, so a guest does not hear their own voice back. */
+  minusTrack(source: string): MediaStreamTrack {
+    let dest = this.minus.get(source);
+    if (!dest) {
+      dest = this.ctx.createMediaStreamDestination();
+      dest.channelCount = 2;
+      for (const [s, c] of this.channels) if (s !== source) c.gain.connect(dest);
+      this.minus.set(source, dest);
+    }
+    const t = dest.stream.getAudioTracks()[0];
+    if (!t) throw new Error("no mix-minus track");
+    return t;
+  }
+
+  dropMinus(source: string): void {
+    const dest = this.minus.get(source);
+    if (!dest) return;
+    for (const [s, c] of this.channels)
+      if (s !== source)
+        try {
+          c.gain.disconnect(dest);
+        } catch {
+          // Not connected to it.
+        }
+    for (const t of dest.stream.getTracks()) t.stop();
+    this.minus.delete(source);
   }
 
   set(source: string, opts: { gain: number; audible: boolean; monitor: boolean }): void {

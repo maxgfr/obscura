@@ -1,9 +1,12 @@
 /**
  * Static server for dist/, plus a mock WHIP ingest at /whip that records
- * what it receives (for the live-mode tests). It answers with a placeholder
- * SDP only when asked for one by a test; otherwise it rejects the offer.
+ * what it receives (for the live-mode tests), and a minimal Nostr relay at
+ * /relay (ephemeral events only, filtered by "#x" tag) for room tests. The
+ * relay logs every event it passes on, so tests can check what it sees.
  */
+
 import { join, normalize } from "node:path";
+import type { ServerWebSocket } from "bun";
 
 export interface WhipLog {
   method: string;
@@ -12,18 +15,67 @@ export interface WhipLog {
   body: string;
 }
 
+interface RelayEvent {
+  id: string;
+  kind: number;
+  tags: string[][];
+  content: string;
+}
+
+type Socket = ServerWebSocket<{ subs: Map<string, string[]> }>;
+
 export interface AppServer {
   port: number;
   whip: WhipLog[];
+  relay: RelayEvent[];
   stop(): void;
 }
 
 export function serveApp(opts: { port: number; dir: string }): AppServer {
   const whip: WhipLog[] = [];
-  const server = Bun.serve({
+  const relay: RelayEvent[] = [];
+  const sockets = new Set<Socket>();
+  const server = Bun.serve<{ subs: Map<string, string[]> }>({
     port: opts.port,
-    async fetch(req) {
+    websocket: {
+      open(ws) {
+        sockets.add(ws);
+      },
+      close(ws) {
+        sockets.delete(ws);
+      },
+      message(ws, data) {
+        let msg: unknown;
+        try {
+          msg = JSON.parse(String(data));
+        } catch {
+          return;
+        }
+        if (!Array.isArray(msg)) return;
+        if (msg[0] === "REQ") {
+          const topics = (msg[2] as { "#x"?: string[] })["#x"] ?? [];
+          ws.data.subs.set(String(msg[1]), topics);
+          ws.send(JSON.stringify(["EOSE", msg[1]]));
+        } else if (msg[0] === "CLOSE") {
+          ws.data.subs.delete(String(msg[1]));
+        } else if (msg[0] === "EVENT") {
+          const ev = msg[1] as RelayEvent;
+          relay.push(ev);
+          ws.send(JSON.stringify(["OK", ev.id, true, ""]));
+          const topic = ev.tags.find((t) => t[0] === "x")?.[1];
+          for (const s of sockets)
+            for (const [sub, topics] of s.data.subs)
+              if (topic && topics.includes(topic)) s.send(JSON.stringify(["EVENT", sub, ev]));
+        }
+      },
+    },
+    async fetch(req, srv) {
       const url = new URL(req.url);
+      if (url.pathname === "/relay") {
+        if (srv.upgrade(req, { data: { subs: new Map() } })) return undefined;
+        if (url.searchParams.has("log")) return Response.json(relay);
+        return new Response("websocket only", { status: 400 });
+      }
       if (url.pathname.startsWith("/whip")) {
         const cors = {
           "access-control-allow-origin": "*",
@@ -57,5 +109,5 @@ export function serveApp(opts: { port: number; dir: string }): AppServer {
       return new Response(file, { headers });
     },
   });
-  return { port: server.port ?? opts.port, whip, stop: () => server.stop(true) };
+  return { port: server.port ?? opts.port, whip, relay, stop: () => server.stop(true) };
 }

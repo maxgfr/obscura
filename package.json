@@ -17,6 +17,7 @@
     "vectors": "bun scripts/vectors.ts"
   },
   "dependencies": {
+    "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
     "@preact/signals": "2.11.2",
     "@sapphi-red/web-noise-suppressor": "0.4.1",

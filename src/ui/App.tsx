@@ -21,6 +21,7 @@ import { openMiniControls, pipSupported } from "./components/MiniControls";
 import { Mixer } from "./components/Mixer";
 import { LayersPanel, ScenesPanel } from "./components/Panels";
 import { RecordBar, record } from "./components/RecordBar";
+import { RoomPanel } from "./components/Room";
 import {
   LivePanel,
   PassphraseSheet,
@@ -207,6 +208,11 @@ export function App(): JSX.Element {
           <span class="fps tabular small muted" title="Preview frame rate">
             {stats.fps} fps
           </span>
+          {!livePage && (
+            <a class="btn ghost sm" href="./live.html" data-testid="go-live-page">
+              <Icon name="broadcast" size={16} /> <span class="hide-sm">Go live</span>
+            </a>
+          )}
           <button
             type="button"
             class="btn ghost sm"
@@ -265,6 +271,7 @@ export function App(): JSX.Element {
         </div>
         <aside class="side side-right">
           <div class="tab-pane" data-pane="edit">
+            {livePage && <RoomPanel />}
             {livePage && <LivePanel />}
             <Inspector />
           </div>

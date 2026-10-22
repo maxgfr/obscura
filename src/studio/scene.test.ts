@@ -4,8 +4,11 @@ import {
   defaultDoc,
   encodeLink,
   LAYER_KINDS,
+  type Layer,
   newLayer,
+  type Scene,
   type StudioDoc,
+  tile,
   toBase64Url,
   validateDoc,
 } from "./scene";
@@ -109,5 +112,57 @@ describe("links", () => {
     );
     const b64 = toBase64Url(new Uint8Array(await bomb.arrayBuffer()));
     await expect(decodeLink(`#s=${b64}`)).rejects.toThrow(/too large|too long/);
+  });
+});
+
+describe("split screen", () => {
+  const people = (n: number, screen: boolean): Scene => ({
+    id: "s1",
+    name: "Live",
+    layers: [
+      ...(screen ? [newLayer("display")] : []),
+      newLayer("camera"),
+      ...Array.from({ length: n - 1 }, () => newLayer("guest")),
+      newLayer("mic"),
+    ],
+  });
+  const inside = (r: { x: number; y: number; w: number; h: number }) =>
+    r.x >= -1e-9 && r.y >= -1e-9 && r.x + r.w <= 1 + 1e-9 && r.y + r.h <= 1 + 1e-9;
+  const overlap = (a: Layer, b: Layer) =>
+    a.rect.x < b.rect.x + b.rect.w - 1e-9 &&
+    b.rect.x < a.rect.x + a.rect.w - 1e-9 &&
+    a.rect.y < b.rect.y + b.rect.h - 1e-9 &&
+    b.rect.y < a.rect.y + a.rect.h - 1e-9;
+
+  for (const screen of [false, true])
+    for (const aspect of [16 / 9, 9 / 16])
+      for (let n = 1; n <= 4; n++)
+        test(`${n} people${screen ? " beside a screen" : ""}, ${aspect > 1 ? "wide" : "tall"}: tiles fill the canvas without overlapping`, () => {
+          const out = tile(people(n, screen), aspect);
+          const tiles = out.layers.filter((l) => l.kind !== "mic");
+          expect(tiles).toHaveLength(n + (screen ? 1 : 0));
+          for (const t of tiles) expect(inside(t.rect)).toBe(true);
+          for (const a of tiles)
+            for (const b of tiles) if (a !== b) expect(overlap(a, b)).toBe(false);
+          for (const t of tiles.filter((l) => l.kind !== "display")) expect(t.shape).toBe("rect");
+          // Still a valid document.
+          expect(() => validateDoc({ ...defaultDoc(), scenes: [out], active: 0 })).not.toThrow();
+        });
+
+  test("two people on a wide canvas sit side by side", () => {
+    const out = tile(people(2, false), 16 / 9).layers.filter((l) => l.kind !== "mic");
+    expect(out.map((l) => l.rect)).toEqual([
+      { x: 0, y: 0, w: 0.5, h: 1 },
+      { x: 0.5, y: 0, w: 0.5, h: 1 },
+    ]);
+  });
+
+  test("hidden layers and other sources are left alone", () => {
+    const s = people(2, false);
+    const text = newLayer("text");
+    const hidden = { ...newLayer("guest"), visible: false };
+    const out = tile({ ...s, layers: [...s.layers, text, hidden] }, 16 / 9);
+    expect(out.layers.find((l) => l.id === text.id)).toEqual(text);
+    expect(out.layers.find((l) => l.id === hidden.id)).toEqual(hidden);
   });
 });

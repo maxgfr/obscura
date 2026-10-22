@@ -5,7 +5,7 @@
  * that precaches every hashed asset.
  *
  * The recording page's CSP has no network: `connect-src 'self'` and nothing
- * else. Only live.html may open https: connections (WHIP). The build fails
+ * else. Only live.html may open https: (WHIP) and wss: (room relays) connections. The build fails
  * if a page has an inline script or a reference to an external origin.
  */
 import { createHash } from "node:crypto";
@@ -33,8 +33,8 @@ function csp(connect: string): string {
 
 /** The studio: recording never needs the network. */
 export const CSP = csp("'self'");
-/** Live mode: the WHIP ingest is wherever the user says, over https. */
-export const LIVE_CSP = csp("'self' https:");
+/** Live mode: the WHIP ingest is wherever the user says, over https; rooms meet through wss: relays. */
+export const LIVE_CSP = csp("'self' https: wss:");
 
 export const PAGES = { "index.html": CSP, "live.html": LIVE_CSP } as const;
 

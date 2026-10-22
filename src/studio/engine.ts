@@ -10,15 +10,26 @@ import { Compositor, type LayerSource } from "../render/compositor";
 import { renderText } from "../render/text";
 import { trustedScriptUrl } from "../security";
 import { loadImage } from "./assets";
-import type { Layer, LayerKind } from "./scene";
-import { activeScene, doc, sourcesIn, transition } from "./store";
+import { type Layer, type LayerKind, tile } from "./scene";
+import {
+  activeScene,
+  addLayer,
+  aspect,
+  doc,
+  removeLayerFrom,
+  sourcesIn,
+  transition,
+  update,
+} from "./store";
 
 export interface Capture {
   source: string;
-  kind: "display" | "camera" | "mic";
+  kind: "display" | "camera" | "mic" | "guest";
   label: string;
   stream: MediaStream;
   video: HTMLVideoElement | null;
+  /** A guest's voice, played for the host (where echo cancellation can hear it). */
+  player: HTMLAudioElement | null;
   hasAudio: boolean;
 }
 
@@ -45,6 +56,10 @@ export class Engine {
   private opening = new Map<string, Promise<void>>();
   /** Microphones the user stopped: not turned back on by themselves. */
   private held = new Set<string>();
+  /** Guest slots added for a guest who joined: removed again when they leave. */
+  private addedForGuest = new Set<string>();
+  /** Guest slots held for someone in the room. */
+  private guests = new Set<string>();
   private images = new Map<string, Picture>();
   private loadingImages = new Set<string>();
   private texts = new Map<string, { canvas: HTMLCanvasElement; key: string; version: number }>();
@@ -156,6 +171,7 @@ export class Engine {
     kind: Capture["kind"],
     stream: MediaStream,
     rnnoise: boolean,
+    label?: string,
   ): Promise<void> {
     const vt = stream.getVideoTracks()[0];
     const at = stream.getAudioTracks()[0];
@@ -168,13 +184,23 @@ export class Engine {
       video.srcObject = new MediaStream([vt]);
       await video.play().catch(() => {});
     }
+    let player: HTMLAudioElement | null = null;
+    if (at && kind === "guest") {
+      // The host hears the guest through a media element: browsers cancel echo for
+      // what elements play, and Chrome only feeds a remote track to Web Audio while
+      // an element plays it.
+      player = new Audio();
+      player.srcObject = new MediaStream([at]);
+      await player.play().catch(() => {});
+    }
     if (at) await this.mixer.add(source, at, rnnoise);
     const cap: Capture = {
       source,
       kind,
-      label: captureLabel(kind, vt ?? at),
+      label: label ?? captureLabel(kind, vt ?? at),
       stream,
       video,
+      player,
       hasAudio: !!at,
     };
     for (const t of stream.getTracks())
@@ -192,6 +218,10 @@ export class Engine {
     if (!cap) return;
     for (const t of cap.stream.getTracks()) t.stop();
     if (cap.video) cap.video.srcObject = null;
+    if (cap.player) {
+      cap.player.pause();
+      cap.player.srcObject = null;
+    }
     this.mixer.remove(source);
     this.live.delete(source);
     captures.value = [...this.live.values()];
@@ -212,6 +242,56 @@ export class Engine {
       if (captureErrors.value[s]) continue;
       void this.open(l);
     }
+  }
+
+  /**
+   * Holds a place on screen for a guest who is joining: a free guest slot of
+   * the active scene, or a new one, and the scene is split into tiles.
+   */
+  reserveGuest(): string {
+    const scene = activeScene.value;
+    const free = scene.layers.find(
+      (l) =>
+        l.kind === "guest" && l.source && !this.live.has(l.source) && !this.guests.has(l.source),
+    );
+    let source = free?.source;
+    if (!source) {
+      const count = scene.layers.filter((l) => l.kind === "guest").length;
+      const layer = addLayer("guest", { name: `Guest ${count + 1}` });
+      if (!layer?.source) throw new Error("This scene is full.");
+      source = layer.source;
+      this.addedForGuest.add(source);
+      this.splitScreen();
+    }
+    this.guests.add(source);
+    return source;
+  }
+
+  async attachGuest(source: string, stream: MediaStream, name: string): Promise<void> {
+    await this.attach(source, "guest", stream, false, name || "Guest");
+  }
+
+  /** A guest left: their capture stops, and a slot added for them goes away. */
+  removeGuest(source: string): void {
+    this.guests.delete(source);
+    this.release(source);
+    if (!this.addedForGuest.delete(source)) return;
+    update((d) => {
+      let next = d;
+      for (const s of d.scenes)
+        for (const l of s.layers) if (l.source === source) next = removeLayerFrom(next, l.id);
+      return next;
+    });
+    this.splitScreen();
+  }
+
+  /** Splits the active scene between its screen, cameras and guests. */
+  splitScreen(): void {
+    const id = activeScene.value.id;
+    update((d) => ({
+      ...d,
+      scenes: d.scenes.map((s) => (s.id === id ? tile(s, aspect.value) : s)),
+    }));
   }
 
   releaseAll(): void {
@@ -251,7 +331,8 @@ export class Engine {
   private sourceFor = (layer: Layer): LayerSource | null => {
     switch (layer.kind) {
       case "display":
-      case "camera": {
+      case "camera":
+      case "guest": {
         const v = layer.source ? this.live.get(layer.source)?.video : null;
         if (!v || v.readyState < 2 || !v.videoWidth) return null;
         return { el: v, width: v.videoWidth, height: v.videoHeight, dynamic: true, version: 0 };

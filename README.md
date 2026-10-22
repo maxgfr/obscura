@@ -31,7 +31,8 @@ The [`obscura` CLI](#cli) opens encrypted recordings and repairs interrupted one
 | Recording | MP4 or WebM, standard or high quality, pause/resume, timer and size on disk, a floating mini control window (Chromium), the screen kept awake. |
 | Encryption | Optional: recordings are sealed with AES-256-GCM under a key stretched from a passphrase (Argon2id). The passphrase lives in memory for the session only. |
 | Layouts | Saved in the browser. **Share layout** gives a link that carries the scenes in its `#fragment`. It never reaches a server and holds no capture, device or image. |
-| Live | Optional and separate: [`live.html`](https://maxgfr.github.io/obscura/live.html) streams the program over **WHIP** (WebRTC ingest) to a URL you give. It is the only page allowed to use the network. |
+| Live with friends | On [`live.html`](https://maxgfr.github.io/obscura/live.html), **Open a room** gives two links. Friends with the **guest link** join with their camera and microphone: once you let them in, they appear on screen and the scene splits into tiles (they hear everyone but themselves). Anyone with the **viewer link** watches the program live. Up to 3 guests and 8 viewers, peer to peer. |
+| Live to a platform | Also on `live.html`: stream the program over **WHIP** (WebRTC ingest) to a URL you give. `live.html` is the only page allowed to use the network. |
 
 Shortcuts: `R` record/stop, `P` pause, `1`–`9` scenes, arrows to nudge (with `Shift`, by 10 px),
 `[` `]` to reorder, `Delete` to remove, `Esc` to deselect. In the preview, `Shift` keeps the aspect
@@ -39,6 +40,25 @@ ratio while resizing and `Alt` turns snapping off.
 
 The security model and its limits are in [SECURITY.md](SECURITY.md), and the
 encrypted file format is in [FORMAT.md](FORMAT.md).
+
+### Live with friends, without a server
+
+The site is static, so there is nothing of ours for browsers to meet on. Instead:
+
+1. **Finding each other.** The friend's page and yours exchange connection details through a
+   few public [Nostr](https://nostr.com) relays, as short-lived messages that relays do not
+   store. Each link carries a random secret in its `#fragment` (never sent to any server): the
+   relays only see an opaque topic derived from it and messages sealed with AES-256-GCM under a
+   key derived from it.
+2. **Media.** Video and audio then go directly between browsers (WebRTC, encrypted with
+   DTLS-SRTP), never through a relay. A public STUN server tells each browser its public address.
+3. **When relays are blocked**, the friend's page offers **codes** to copy by hand: they send you
+   theirs, you paste it under **Add someone by code** and send back the answer.
+
+Guest and viewer links have different secrets, so a viewer cannot join on screen, and guests
+wait until you let them in. Some strict networks (some mobile carriers, corporate firewalls) block
+direct connections; a TURN server (optional, in the room panel) relays the media for them.
+Each viewer gets their own stream from your browser, so your upload limits how many can watch.
 
 ### What a browser cannot do
 
@@ -84,7 +104,7 @@ Requirements: [Bun](https://bun.sh) 1.4+, and Rust (stable) for the CLI.
 bun install
 bun run dev          # http://localhost:5173 (live mode: /live.html, with a mock WHIP ingest)
 bun run test         # unit tests, shared vectors, build checks
-bun run test:e2e     # Playwright: Chromium (fake camera, mic and screen), WebKit, phones, CLI interop
+bun run test:e2e     # Playwright: Chromium (fake camera, mic and screen), rooms over a mock relay, WebKit, phones, CLI interop
 bun run typecheck && bun run lint && bun run build && bun run check-size
 
 cargo test --manifest-path cli/Cargo.toml
@@ -100,7 +120,7 @@ src/
   capture/   screen, camera, microphone
   record/    encoder (Mediabunny), OPFS storage, crash recovery, MP4 metadata scrub
   crypto/    the sealed format: Argon2id, chunked AES-256-GCM
-  live/      WHIP (live.html only)
+  live/      WHIP, rooms and their relay signaling (live.html only)
   workers/   OPFS writer, key derivation, render clock, audio tap
   ui/        Preact components
 cli/         the Rust CLI (same format, same layout rules)
