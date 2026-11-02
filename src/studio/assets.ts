@@ -1,14 +1,32 @@
-/** Image layers' pictures, kept in the origin-private file system next to the recordings. */
-import { hasOpfs } from "../record/storage";
+/** Image layers' pictures, kept in the origin-private file system next to the recordings (obscura/assets). */
+import { appDir, hasOpfs, moveFile } from "../record/storage";
 import { newId } from "./scene";
 
 const DIR = "assets";
 export const MAX_IMAGE = 20 * 1024 * 1024;
 const memory = new Map<string, Blob>();
 
-async function dir(): Promise<FileSystemDirectoryHandle> {
+function dir(): Promise<FileSystemDirectoryHandle> {
+  return appDir(DIR);
+}
+
+/**
+ * A picture an earlier version kept in `/assets`, at the top of OPFS: moved
+ * into obscura's folder the first time a layer asks for it. Only pictures a
+ * layer names are taken, as another site of the origin may use `/assets` too;
+ * the old folder goes once empty.
+ */
+async function fromLegacy(id: string): Promise<Blob> {
   const root = await navigator.storage.getDirectory();
-  return root.getDirectoryHandle(DIR, { create: true });
+  const legacy = await root.getDirectoryHandle(DIR);
+  const target = await dir();
+  try {
+    await moveFile(legacy, target, id);
+  } catch {
+    return (await legacy.getFileHandle(id)).getFile();
+  }
+  await root.removeEntry(DIR).catch(() => {});
+  return (await target.getFileHandle(id)).getFile();
 }
 
 export async function storeImage(file: Blob): Promise<string> {
@@ -36,7 +54,14 @@ export async function storeImage(file: Blob): Promise<string> {
 
 export async function loadImage(id: string): Promise<ImageBitmap | null> {
   try {
-    const blob = memory.get(id) ?? (await (await (await dir()).getFileHandle(id)).getFile());
+    const blob =
+      memory.get(id) ??
+      (await (
+        await dir()
+      )
+        .getFileHandle(id)
+        .then((h) => h.getFile())
+        .catch(() => fromLegacy(id)));
     return await createImageBitmap(blob);
   } catch {
     return null;

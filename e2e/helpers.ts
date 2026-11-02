@@ -79,11 +79,12 @@ export interface StoredFile {
   head: number[];
 }
 
-/** The recordings folder in the origin-private file system. */
+/** The recordings folder (obscura/recordings) in the origin-private file system. */
 export async function storedRecordings(page: Page): Promise<StoredFile[]> {
   return page.evaluate(async () => {
     const root = await navigator.storage.getDirectory();
-    const dir = await root.getDirectoryHandle("recordings", { create: true });
+    const app = await root.getDirectoryHandle("obscura", { create: true });
+    const dir = await app.getDirectoryHandle("recordings", { create: true });
     const out: { name: string; size: number; head: number[] }[] = [];
     for await (const [name, h] of dir as unknown as AsyncIterable<[string, FileSystemFileHandle]>) {
       if (h.kind !== "file") continue;
@@ -102,7 +103,7 @@ export async function storedRecordings(page: Page): Promise<StoredFile[]> {
 export async function recordingBytes(page: Page, name: string): Promise<Buffer> {
   const b64 = await page.evaluate(async (n) => {
     const root = await navigator.storage.getDirectory();
-    const dir = await root.getDirectoryHandle("recordings");
+    const dir = await (await root.getDirectoryHandle("obscura")).getDirectoryHandle("recordings");
     const f = await (await dir.getFileHandle(n)).getFile();
     const bytes = new Uint8Array(await f.arrayBuffer());
     let s = "";

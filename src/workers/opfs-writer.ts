@@ -19,10 +19,13 @@ interface FileHandleWithSync extends FileSystemFileHandle {
 }
 
 type Msg =
-  | { op: "open"; dir: string; name: string }
+  /** `dir`: the folder's path from the OPFS root (obscura/recordings). */
+  | { op: "open"; dir: string[]; name: string }
   | { op: "write"; id: number; data: ArrayBuffer }
   | { op: "close"; id: number; final: string }
-  | { op: "abort"; id: number };
+  | { op: "abort"; id: number }
+  /** Flushes and closes the file, keeping it (after a failed write or close). */
+  | { op: "release"; id: number };
 
 const FLUSH_MS = 1000;
 
@@ -40,11 +43,18 @@ self.onmessage = async (e: MessageEvent<Msg>) => {
   try {
     switch (m.op) {
       case "open": {
-        const root = await navigator.storage.getDirectory();
-        dir = await root.getDirectoryHandle(m.dir, { create: true });
-        file = (await dir.getFileHandle(m.name, { create: true })) as FileHandleWithSync;
-        handle = await file.createSyncAccessHandle();
+        let d = await navigator.storage.getDirectory();
+        for (const part of m.dir) d = await d.getDirectoryHandle(part, { create: true });
+        dir = d;
         name = m.name;
+        file = (await dir.getFileHandle(m.name, { create: true })) as FileHandleWithSync;
+        try {
+          handle = await file.createSyncAccessHandle();
+        } catch (err) {
+          // No sync handle here (the page records in memory): leave no empty file behind.
+          await dir.removeEntry(m.name).catch(() => {});
+          throw err;
+        }
         at = handle.getSize();
         lastFlush = performance.now();
         post({ op: "opened" });
@@ -79,8 +89,22 @@ self.onmessage = async (e: MessageEvent<Msg>) => {
         post({ op: "closed", id: m.id, name: finalName, size: at });
         break;
       }
+      case "release": {
+        try {
+          handle?.flush();
+        } finally {
+          handle?.close();
+          handle = null;
+        }
+        post({ op: "aborted", id: m.id });
+        break;
+      }
       case "abort": {
-        handle?.close();
+        try {
+          handle?.close();
+        } catch {
+          // Closing is all that matters before deleting.
+        }
         handle = null;
         if (dir && name) await dir.removeEntry(name).catch(() => {});
         post({ op: "aborted", id: m.id });
