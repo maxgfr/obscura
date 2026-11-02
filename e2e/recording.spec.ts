@@ -37,7 +37,7 @@ test("records the program to fragmented MP4, written to disk as it goes", async 
   // It plays, at the canvas size.
   const meta = await page.evaluate(async (name) => {
     const root = await navigator.storage.getDirectory();
-    const dir = await root.getDirectoryHandle("recordings");
+    const dir = await (await root.getDirectoryHandle("obscura")).getDirectoryHandle("recordings");
     const file = await (await dir.getFileHandle(name)).getFile();
     const v = document.createElement("video");
     v.muted = true;

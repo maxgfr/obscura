@@ -96,6 +96,22 @@ async function startWebCodecs(o: RecordOptions, codec: VideoCodec, sealed: boole
   const name = recordingName(new Date(), o.container, sealed);
   const mime = o.container === "mp4" ? "video/mp4" : "video/webm";
   const sink = await openSink(`${name}${PART}`, sealed ? "application/octet-stream" : mime);
+  try {
+    return await recordWebCodecs(o, codec, name, sink, mime);
+  } catch (err) {
+    // A start that fails leaves no empty file, and no worker holding one open.
+    await sink.abort();
+    throw err;
+  }
+}
+
+async function recordWebCodecs(
+  o: RecordOptions,
+  codec: VideoCodec,
+  name: string,
+  sink: Sink,
+  mime: string,
+): Promise<Recording> {
   const pipeline = await createPipeline(sink, { mp4: o.container === "mp4", mime, seal: o.seal });
   const format =
     o.container === "mp4"
@@ -125,12 +141,7 @@ async function startWebCodecs(o: RecordOptions, codec: VideoCodec, sealed: boole
   // Swallowed here, observed by the caller through `failed`.
   failed.catch(() => {});
 
-  try {
-    await output.start();
-  } catch (err) {
-    await sink.abort();
-    throw err;
-  }
+  await output.start();
 
   // One time base: the audio clock, minus time spent paused.
   const t0 = o.clock();
@@ -245,11 +256,26 @@ async function startMediaRecorder(o: RecordOptions, sealed: boolean): Promise<Re
   const name = recordingName(new Date(), pick.container, sealed);
   const mime = pick.container === "mp4" ? "video/mp4" : "video/webm";
   const sink = await openSink(`${name}${PART}`, sealed ? "application/octet-stream" : mime);
+  try {
+    return await recordMediaRecorder(o, pick.mime, name, sink, mime);
+  } catch (err) {
+    await sink.abort();
+    throw err;
+  }
+}
+
+async function recordMediaRecorder(
+  o: RecordOptions,
+  recorderMime: string,
+  name: string,
+  sink: Sink,
+  mime: string,
+): Promise<Recording> {
   // No metadata scrub here: MediaRecorder's MP4 is not fragmented the same way, and is passed as is.
   const pipeline: Pipeline = await createPipeline(sink, { mp4: false, mime, seal: o.seal });
   const stream = new MediaStream(o.audio ? [o.video, o.audio] : [o.video]);
   const rec = new MediaRecorder(stream, {
-    mimeType: pick.mime,
+    mimeType: recorderMime,
     videoBitsPerSecond: o.quality === "high" ? 12_000_000 : 6_000_000,
   });
   let chain = Promise.resolve();
@@ -269,7 +295,7 @@ async function startMediaRecorder(o: RecordOptions, sealed: boolean): Promise<Re
   return {
     name,
     engine: "mediarecorder",
-    codec: pick.mime,
+    codec: recorderMime,
     sink: sink.kind,
     failed,
     bytes: () => pipeline.written,

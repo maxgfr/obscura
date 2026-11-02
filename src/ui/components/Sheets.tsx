@@ -282,7 +282,12 @@ export function RecordingsSheet(props: { open: boolean; onClose: () => void }): 
                       aria-label={`Delete ${display}`}
                       title="Delete"
                       onClick={async () => {
-                        await deleteRecording(r.name);
+                        await deleteRecording(r.name).catch(() =>
+                          toast(
+                            "Could not delete it: close other obscura tabs and try again.",
+                            "warn",
+                          ),
+                        );
                         await refreshLibrary();
                       }}
                       data-testid="delete-recording"

@@ -4,11 +4,19 @@
  * on this device), from which they are saved or downloaded. When the
  * browser has no OPFS (some private modes), they stay in memory until saved.
  * Nothing is ever uploaded.
+ *
+ * The live site shares its origin (maxgfr.github.io) with other projects, and
+ * OPFS belongs to the origin, not the path: every folder obscura keeps lives
+ * under its own `obscura/` folder, never at the top where another site's
+ * folder of the same name could be.
  */
 import { trustedScriptUrl } from "../security";
 
+/** obscura's folder at the top of the origin-private file system. */
+export const ROOT = "obscura";
 export const DIR = "recordings";
 export const PART = ".part";
+export const DONE = ".done";
 
 export interface Sink {
   readonly kind: "opfs" | "memory";
@@ -67,7 +75,7 @@ class OpfsSink implements Sink {
         else fail(new Error(e.data.op === "error" ? e.data.message : "storage failed"));
       };
       worker.onerror = () => fail(new Error("storage worker failed"));
-      worker.postMessage({ op: "open", dir: DIR, name });
+      worker.postMessage({ op: "open", dir: [ROOT, DIR], name });
     }).catch((err) => {
       worker.terminate();
       throw err;
@@ -75,8 +83,13 @@ class OpfsSink implements Sink {
     return new OpfsSink(worker, mime);
   }
 
-  private call(msg: Record<string, unknown>, transfer: Transferable[] = []): Promise<Reply> {
-    if (this.broken) return Promise.reject(this.broken);
+  /** `force`: sent even after a write failed (to release or delete the file). */
+  private call(
+    msg: Record<string, unknown>,
+    transfer: Transferable[] = [],
+    force = false,
+  ): Promise<Reply> {
+    if (this.broken && !force) return Promise.reject(this.broken);
     const id = ++this.seq;
     return new Promise((ok, fail) => {
       this.pending.set(id, { ok, fail });
@@ -91,7 +104,15 @@ class OpfsSink implements Sink {
   }
 
   async close(finalName: string): Promise<Saved> {
-    const r = await this.call({ op: "close", final: finalName });
+    let r: Reply;
+    try {
+      r = await this.call({ op: "close", final: finalName });
+    } catch (err) {
+      // Keep what was written (listed as interrupted), but let go of the file:
+      // a handle left open would lock it until the tab closes, even against deleting.
+      await this.settle({ op: "release" });
+      throw err;
+    }
     this.worker.terminate();
     if (r.op !== "closed") throw new Error("storage did not close");
     const dir = await recordingsDir();
@@ -102,7 +123,18 @@ class OpfsSink implements Sink {
   }
 
   async abort(): Promise<void> {
-    await this.call({ op: "abort" }).catch(() => {});
+    // Even after a failed write (storage full): a cancelled recording is deleted.
+    await this.settle({ op: "abort" });
+  }
+
+  /** Last message to the worker, answered or not within a few seconds, then the worker goes. */
+  private async settle(msg: Record<string, unknown>): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<void>((ok) => {
+      timer = setTimeout(ok, 5000);
+    });
+    await Promise.race([this.call(msg, [], true).catch(() => {}), late]);
+    clearTimeout(timer);
     this.worker.terminate();
   }
 }
@@ -145,9 +177,112 @@ export async function openSink(name: string, mime: string): Promise<Sink> {
   return new MemorySink(mime);
 }
 
-export async function recordingsDir(): Promise<FileSystemDirectoryHandle> {
+/** `obscura/<name>` in the origin-private file system. */
+export async function appDir(name: string): Promise<FileSystemDirectoryHandle> {
   const root = await navigator.storage.getDirectory();
-  return root.getDirectoryHandle(DIR, { create: true });
+  const app = await root.getDirectoryHandle(ROOT, { create: true });
+  return app.getDirectoryHandle(name, { create: true });
+}
+
+export function recordingsDir(): Promise<FileSystemDirectoryHandle> {
+  return appDir(DIR);
+}
+
+type MovableFile = FileSystemFileHandle & {
+  move?(to: FileSystemDirectoryHandle, name: string): Promise<void>;
+  createWritable?(): Promise<WritableStream>;
+};
+
+/** Moves `name` from `from` to `to` (copies then deletes where `move` is missing). */
+export async function moveFile(
+  from: FileSystemDirectoryHandle,
+  to: FileSystemDirectoryHandle,
+  name: string,
+): Promise<void> {
+  const handle = (await from.getFileHandle(name)) as MovableFile;
+  if (typeof handle.move === "function") {
+    await handle.move(to, name);
+    return;
+  }
+  const copy = (await to.getFileHandle(name, { create: true })) as MovableFile;
+  try {
+    if (typeof copy.createWritable !== "function") throw new Error("cannot copy");
+    await (await handle.getFile()).stream().pipeTo(await copy.createWritable());
+  } catch (err) {
+    await to.removeEntry(name).catch(() => {});
+    throw err;
+  }
+  await from.removeEntry(name);
+}
+
+/**
+ * Earlier versions kept their folder at the top of OPFS (`/recordings`). Moves
+ * the files `mine` recognises into `obscura/<name>`, then removes the old
+ * folder if that left it empty. A file that cannot move now (locked by a tab
+ * still recording into it, or no room to copy it) stays, and is retried on
+ * the next start.
+ */
+export async function migrateLegacyDir(
+  name: string,
+  mine: (file: string) => boolean,
+): Promise<void> {
+  let root: FileSystemDirectoryHandle;
+  let legacy: FileSystemDirectoryHandle;
+  try {
+    root = await navigator.storage.getDirectory();
+    legacy = await root.getDirectoryHandle(name);
+  } catch {
+    return; // nothing to migrate
+  }
+  const target = await appDir(name);
+  const taken = new Set<string>();
+  for await (const [n] of target as unknown as AsyncIterable<[string, FileSystemHandle]>)
+    taken.add(n);
+  const names: string[] = [];
+  for await (const [n, h] of legacy as unknown as AsyncIterable<[string, FileSystemHandle]>)
+    if (h.kind === "file" && mine(n) && !taken.has(n)) names.push(n);
+  for (const n of names) await moveFile(legacy, target, n).catch(() => {});
+  // Not recursive: only goes if empty, so another site's files there are never touched.
+  await root.removeEntry(name).catch(() => {});
+}
+
+/**
+ * Bookkeeping nobody will use: a done marker whose recording is gone, and an
+ * empty file left by a recording that failed to start (older than a minute,
+ * as one that has only just started is empty too). Interrupted recordings
+ * are never in this list: they are playable, and listed for the user.
+ */
+export function orphans(
+  files: { name: string; size: number; modified: number }[],
+  now: number,
+): string[] {
+  const names = new Set(files.map((f) => f.name));
+  return files
+    .filter((f) =>
+      f.name.endsWith(DONE)
+        ? !names.has(f.name.slice(0, -DONE.length))
+        : f.size === 0 && now - f.modified > 60_000,
+    )
+    .map((f) => f.name);
+}
+
+let prepared: Promise<void> | null = null;
+
+/** Once per page: brings recordings from the old folder, and drops orphaned bookkeeping. */
+function prepare(): Promise<void> {
+  prepared ??= (async () => {
+    await migrateLegacyDir(DIR, (n) => n.startsWith("obscura-")).catch(() => {});
+    const dir = await recordingsDir();
+    const files: { name: string; size: number; modified: number }[] = [];
+    for await (const [n, h] of dir as unknown as AsyncIterable<[string, FileSystemHandle]>) {
+      if (h.kind !== "file") continue;
+      const f = await (h as FileSystemFileHandle).getFile();
+      files.push({ name: n, size: f.size, modified: f.lastModified });
+    }
+    // A file another tab is writing is locked: removing it fails, and it stays.
+    for (const n of orphans(files, Date.now())) await dir.removeEntry(n).catch(() => {});
+  })().catch(() => {});
+  return prepared;
 }
 
 export interface StoredRecording {
@@ -165,10 +300,10 @@ export function classify(
 ): { name: string; interrupted: boolean; display: string }[] {
   const set = new Set(names);
   return names
-    .filter((n) => !n.endsWith(".done"))
+    .filter((n) => !n.endsWith(DONE))
     .map((n) => {
       const part = n.endsWith(PART);
-      const done = part && set.has(`${n}.done`);
+      const done = part && set.has(`${n}${DONE}`);
       return {
         name: n,
         interrupted: part && !done,
@@ -180,6 +315,7 @@ export function classify(
 
 export async function listRecordings(): Promise<StoredRecording[]> {
   if (!hasOpfs()) return [];
+  await prepare();
   const dir = await recordingsDir();
   const names: string[] = [];
   for await (const [n, h] of dir as unknown as AsyncIterable<[string, FileSystemHandle]>)
@@ -208,7 +344,7 @@ export async function readRecording(name: string): Promise<File> {
 export async function deleteRecording(name: string): Promise<void> {
   const dir = await recordingsDir();
   await dir.removeEntry(name);
-  await dir.removeEntry(`${name}.done`).catch(() => {});
+  await dir.removeEntry(`${name}${DONE}`).catch(() => {});
 }
 
 export function mimeOf(name: string): string {
